@@ -16,7 +16,7 @@ class FuelStation():
         return fuel_type.lower().find('d') != -1
     
     def is_lpg(self, fuel_type):
-        return fuel_type == 'Autogaze'
+        return fuel_type == 'Autogaze' or fuel_type == 'LPG'
 
     def collect_data(self):
         try:
@@ -90,9 +90,35 @@ class Circle_K(FuelStation):
                     return {}
         
         return data
+
+class Virsi(FuelStation):
+    def __init__(self):
+        super().__init__("Virsi", "https://www.virsi.lv/en/private/fuel/fuel-price")
+
+    def scrape_data(self, response: Response) -> dict:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        divs = soup.find_all('p', class_='price')
+        data = {}
+
+        for div in divs:
+            spans = div.find_all('span')
+            name, price = spans[0].text.strip(), spans[1].text.strip()
+
+            # no electricity prices, sorry
+            if name.find('kW') != -1 or name == 'AdBLUE' or name == 'CNG':
+                continue
+
+            try:
+                price_value = round(float(price), 2)
+                data[name] = price_value
+            except ValueError:
+                print(f"Error converting price for {name}: {price}")
+
+
+        return data
     
 def get_station_by_name(name):
-    stations = [Circle_K(), Neste()]
+    stations = [Circle_K(), Neste(), Virsi()]
     for station in stations:
         if station.name == name:
             return station
