@@ -7,7 +7,7 @@ from loader import db
 from telegram_bot import send_price_update, ping_update
 
 logger = logging.getLogger(__name__)
-stations = {Circle_K(), Neste(), Virsi()}
+stations = {Circle_K(), Neste(), Virsi(), Viada()}
 
 def normalize_text(text):
     return unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8')
