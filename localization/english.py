@@ -21,3 +21,5 @@ PRICE_CHANGES_HEADER = '''*Recent price changes*\n10 most recent ones:\n\n'''
 
 SUBSCRIBED_STATUS = 'Subscribed to updates ✅'
 UNSUBSCRIBED_STATUS = 'Not subscribed ❌'
+
+DISCLAIMER = '''\nℹ️ *Disclaimer*: _The prices provided by this bot are collected from the respective fuel station websites and may not always be accurate or up to date\\. Usually those are not updated on holidays and some of them might be tied to only some specific gas stations\\._'''

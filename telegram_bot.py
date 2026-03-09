@@ -155,6 +155,9 @@ async def request_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔄 Request new prices", callback_data="request_new")]
     ])
 
+    # disclaimer
+    message += msg.DISCLAIMER
+
     if update.callback_query is not None:
         await update.callback_query.answer()
 
