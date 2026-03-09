@@ -1,0 +1,16 @@
+config/telegram_token.txt
+.env
+
+*.db
+*.sqlite3
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+venv/
+.venv/
+env/
+
+.vscode/
+.idea/
