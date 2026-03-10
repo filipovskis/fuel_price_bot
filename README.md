@@ -9,8 +9,11 @@ I built this to keep an eye on things when fuel prices started to increase due t
 - History - saves all price changes so you can see them afterwards.
 - Comparison - quickly shows all prices and what station has the cheapest fuel right now.
 
+### Extensibility
+You can easily modify the scrapers or add new ones to support other fuel chains or different countries entirely.
+
 ## Demo
-The bot is live and running here: [@fuelwatchlv_bot](t.me/fuelwatchlv_bot)
+The bot is live and running here: [@fuelwatchlv_bot](https://t.me/fuelwatchlv_bot)
 
 <img width="457" height="219" alt="image" src="https://github.com/user-attachments/assets/d8d7ead2-a7a1-4b38-89e6-528977b7e998" />
 <img width="456" height="766" alt="image" src="https://github.com/user-attachments/assets/c4d8e1c1-7cdf-458c-8b33-b81058013b0d" />
