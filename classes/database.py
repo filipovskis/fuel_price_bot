@@ -89,7 +89,12 @@ class Database:
 
     def get_price_changes(self):
         self.cursor.execute("""
-            SELECT company, fuel_type, old_price, new_price, UNIXEPOCH(change_date)
+            SELECT 
+                company, 
+                fuel_type, 
+                old_price, 
+                new_price, 
+                CAST(strftime('%s', change_date) AS INTEGER)
             FROM price_changes
             ORDER BY change_date DESC
             LIMIT 10
