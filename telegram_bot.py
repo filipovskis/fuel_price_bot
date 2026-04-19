@@ -10,7 +10,7 @@ from loader import db
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo #  this one requires python 3.9+
 from telegram.helpers import escape_markdown
-from telegram import Update, Chat, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, Chat, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
 
 lastUpdate = None
@@ -385,6 +385,12 @@ async def update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await request_prices(update, context)
     elif ( data == 'history' ):
         await request_price_changes(update, context)
+    elif ( data == 'period_week' ):
+        await process_price_changes(update, context, period='week')
+    elif ( data == 'period_month' ):
+        await process_price_changes(update, context, period='month')
+    elif ( data == 'period_day' ):
+        await process_price_changes(update, context, period='day')
 
 # --------------
 # commands
@@ -393,7 +399,8 @@ async def update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("⛽ Get current prices", callback_data="prices")],
-        [InlineKeyboardButton("📖 Get price history", callback_data="history")],
+        [InlineKeyboardButton("📅 Changes (Daily)", callback_data='period_day')],
+        [InlineKeyboardButton("📆 Changes (Weekly)", callback_data='period_week'), InlineKeyboardButton("🗓 Changes (Monthly)", callback_data='period_month')],
         [InlineKeyboardButton("🔔 Subscribe to updates", callback_data="subscribe"), InlineKeyboardButton("🔕 Unsubscribe from updates", callback_data="unsubscribe")]
     ])
 
@@ -423,6 +430,17 @@ async def cmd_history_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_history_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_price_changes(update, context, period='day')
 
+async def post_init(application):
+    commands = [
+        BotCommand("daily", "Get daily price changes"),
+        BotCommand("weekly", "Get weekly price changes"),
+        BotCommand("monthly", "Get monthly price changes"),
+        BotCommand("history", "Get weekly price changes"),
+        BotCommand("status", "Get current fuel prices"),
+        BotCommand("start", "Open interactive menu")
+    ]
+    await application.bot.set_my_commands(commands)
+
 def init_bot():
     try: 
         with open("config/telegram_token.txt", "r") as token_file:
@@ -430,7 +448,7 @@ def init_bot():
             if token == "":
                 raise ValueError("Telegram token is empty. Please add your bot token to 'config/telegram_token.txt'.")
 
-            application = ApplicationBuilder().token(token).build()
+            application = ApplicationBuilder().token(token).post_init(post_init).build()
     except FileNotFoundError:
         print("Telegram token file not found. Please create 'config/telegram_token.txt' and add your bot token.")
         exit(1)
@@ -449,5 +467,6 @@ def init_bot():
     application.add_handler(CommandHandler("weekly", cmd_history_week))
     application.add_handler(CommandHandler("monthly", cmd_history_month))
     application.add_handler(CommandHandler("daily", cmd_history_day))
+
 
     return application
