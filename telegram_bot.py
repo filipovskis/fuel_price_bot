@@ -7,7 +7,7 @@ import localization.english as msg
 from classes.fuel_station import FuelStation, get_station_by_name
 from loader import db
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo #  this one requires python 3.9+
 from telegram.helpers import escape_markdown
 from telegram import Update, Chat, InlineKeyboardMarkup, InlineKeyboardButton
@@ -173,21 +173,25 @@ async def request_price_changes(update: Update, context: ContextTypes.DEFAULT_TY
         await update.callback_query.answer()
     
     grouped_by_time = {}
-    for company, fuel_type, old_price, new_price, change_date in price_changes:
-        if change_date not in grouped_by_time:
-            grouped_by_time[change_date] = []
-    
-        grouped_by_time[change_date].append((company, fuel_type, old_price, new_price))
+    maxDays = 7
+    for company, fuel_type, old_price, new_price, change_date_str, timestamp in price_changes:
+        if change_date_str not in grouped_by_time:
+            grouped_by_time[change_date_str] = []
+
+        grouped_by_time[change_date_str].append((company, fuel_type, old_price, new_price))
+
+        if len(grouped_by_time) > maxDays:
+            break
 
     message = msg.PRICE_CHANGES_HEADER
-    for change_date, changes in grouped_by_time.items():
-        date_str = escape(get_time(change_date).strftime("%d.%m.%Y %H:%M"))
+    for change_date_str, changes in grouped_by_time.items():
+        date_str = escape(change_date_str)
         message += f"• \\[{date_str}\\]\n"
 
         for company, fuel_type, old_price, new_price in changes:
             diff = round(new_price - old_price, 2)
             icon = "📈" if diff > 0 else "📉" if diff < 0 else ""
-            fuel_icon = get_fuel_icon(get_station_by_name(company), fuel_type)
+            # fuel_icon = get_fuel_icon(get_station_by_name(company), fuel_type)
 
             diff_str = escape(text=f"{diff:+.2f}")
             old_price_str = escape(text=f"{old_price:.2f}")
@@ -204,6 +208,161 @@ async def request_price_changes(update: Update, context: ContextTypes.DEFAULT_TY
 
     await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="MarkdownV2", reply_markup=markup)
 
+MAX_PERIODS_TO_SHOW = 10
+MAX_MESSAGE_LENGTH = 3800
+
+async def process_price_changes(update: Update, context: ContextTypes.DEFAULT_TYPE, period: str):
+    if update.callback_query is not None:
+        await update.callback_query.answer()
+
+    query = """
+        SELECT 
+            company, 
+            fuel_type, 
+            old_price, 
+            new_price, 
+            CAST(strftime('%s', change_date) AS INTEGER) as timestamp
+        FROM price_changes
+        WHERE fuel_type NOT LIKE '%+%' 
+          AND fuel_type NOT LIKE '%Pro%' 
+          AND fuel_type NOT LIKE '%XTL%' 
+          AND fuel_type NOT LIKE '%MY%'
+        ORDER BY change_date DESC
+        LIMIT 500
+    """
+    
+    db.cursor.execute(query)
+    price_changes = db.cursor.fetchall()
+
+    if not price_changes:
+        await shared_response(update, f"No price change data available for this period ({period}).")
+        return
+
+    grouped_by_time = {}
+    for company, fuel_type, old_price, new_price, timestamp in price_changes:
+        dt = datetime.fromtimestamp(timestamp)
+        
+        if period == 'day':
+            display_key = dt.strftime('%d.%m.%Y')
+        elif period == 'week':
+            start_of_week = dt - timedelta(days=dt.weekday())
+            end_of_week = start_of_week + timedelta(days=6)
+            display_key = f"{start_of_week.strftime('%d.%m.%Y')} - {end_of_week.strftime('%d.%m.%Y')}"
+        elif period == 'month':
+            display_key = dt.strftime('%m.%Y')
+        else:
+            await shared_response(update, "Invalid period specified.")
+            return
+
+        if display_key not in grouped_by_time:
+            grouped_by_time[display_key] = []
+        grouped_by_time[display_key].append((company, fuel_type, old_price, new_price))
+
+    final_grouping = {}
+    for display_key, changes in grouped_by_time.items():
+        if display_key not in final_grouping:
+            final_grouping[display_key] = {}
+
+        for company, fuel_type, old_price, new_price in changes:
+            if (new_price == old_price):
+                continue
+
+            company_obj = get_station_by_name(company)
+            if company_obj is None:
+                continue
+
+            is_diesel = company_obj.is_diesel(fuel_type)
+            fuel_type_found = "Diesel" if is_diesel else ""
+        
+            if fuel_type_found == "":
+                if '95' in fuel_type:
+                    fuel_type_found = "Petrol 95"
+                elif '98' in fuel_type:
+                    fuel_type_found = "Petrol 98"
+
+            if fuel_type_found == "":
+                continue
+
+            if fuel_type_found not in final_grouping[display_key]:
+                final_grouping[display_key][fuel_type_found] = [old_price, new_price]
+            else:
+                final_grouping[display_key][fuel_type_found][0] = old_price
+
+    for display_key, changes_by_fuel in list(final_grouping.items()):
+        if len(changes_by_fuel) == 0:
+            del final_grouping[display_key]
+
+    if not final_grouping:
+        await shared_response(update, "No data left to display after filtering out premium fuels.")
+        return
+
+    max_price = 0
+    min_price = float('inf')
+    max_inc = 0
+    max_dec = 0
+
+    for display_key, changes_by_fuel in final_grouping.items():
+        for fuel, (old_p, new_p) in changes_by_fuel.items():
+            diff = new_p - old_p
+
+            min_price = min(min_price, old_p, new_p)
+            max_price = max(max_price, old_p, new_p)
+            max_inc = max(max_inc, diff)
+            max_dec = min(max_dec, diff)
+
+    change_avg = (max_price - min_price) / len(final_grouping)
+
+    message = msg.PRICE_CHANGES_HEADER if hasattr(msg, 'PRICE_CHANGES_HEADER') else "⛽ *Price Changes*\n\n"
+    
+    message += "📊 *Summary:*\n"
+    message += f"Average change: *{escape(f'{change_avg:+.2f}')}€*\n"
+    
+    if max_inc > 0:
+        message += f"Max increase: *{escape(f'+{max_inc:.2f}')}€* 🚀\n"
+    if max_dec < 0:
+        message += f"Max decrease: *{escape(f'{max_dec:.2f}')}€* 🔻\n"
+        
+    message += "\n\n"
+
+    periods_shown = 0
+
+    for display_key, changes_by_fuel in final_grouping.items():
+        if periods_shown >= MAX_PERIODS_TO_SHOW:
+            message += "\n*\\.\\.\\. older data hidden \\.\\.\\.*\n"
+            break
+
+        block = f"• \\[{escape(display_key)}\\]\n"
+        sorted_fuels = sorted(changes_by_fuel.items(), key=lambda x: x[0])
+
+        for fuel_type_key, changes in sorted_fuels:
+            fuel_type_str = escape(fuel_type_key)
+            fuel_icon = "⚫" if "Diesel" in fuel_type_key else "🟢"
+            old_price, new_price = changes
+
+            diff = round(new_price - old_price, 2)
+            no_change = diff == 0
+        
+            icon = "📈" if diff > 0 else "📉" if diff < 0 else ""
+
+            diff_str = escape(text=f"{diff:+.2f}")
+            old_price_str = escape(text=f"{old_price:.2f}")
+            new_price_str = escape(text=f"{new_price:.2f}")
+
+            if no_change:
+                continue
+            else:
+                block += f"    {fuel_icon} *{escape(fuel_type_str)}*: *{diff_str}€* {icon} \\({old_price_str}€ → *__{new_price_str}€__*\\)\n"
+
+        block += "\n"
+
+        if len(message) + len(block) > MAX_MESSAGE_LENGTH:
+            message += "\n⚠️ *Message truncated due to Telegram length limits*\n"
+            break
+            
+        message += block
+        periods_shown += 1
+
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode="MarkdownV2")
 # --------------
 # buttons
 # --------------
@@ -255,6 +414,15 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await request_price_changes(update, context)
 
+async def cmd_history_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await process_price_changes(update, context, period='week')
+
+async def cmd_history_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await process_price_changes(update, context, period='month')
+
+async def cmd_history_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await process_price_changes(update, context, period='day')
+
 def init_bot():
     try: 
         with open("config/telegram_token.txt", "r") as token_file:
@@ -275,6 +443,11 @@ def init_bot():
     application.add_handler(CommandHandler("subscribe", cmd_subscribe))
     application.add_handler(CommandHandler("unsubscribe", cmd_unsubscribe))
     application.add_handler(CommandHandler("status", cmd_status))
-    application.add_handler(CommandHandler("history", cmd_history))
+
+    application.add_handler(CommandHandler("ahistory", cmd_history))
+    application.add_handler(CommandHandler("history", cmd_history_week))
+    application.add_handler(CommandHandler("weekly", cmd_history_week))
+    application.add_handler(CommandHandler("monthly", cmd_history_month))
+    application.add_handler(CommandHandler("daily", cmd_history_day))
 
     return application

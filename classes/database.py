@@ -94,10 +94,12 @@ class Database:
                 fuel_type, 
                 old_price, 
                 new_price, 
-                CAST(strftime('%s', change_date) AS INTEGER)
+                strftime('%d.%m.%Y',change_date) as date, 
+                CAST(strftime('%s', change_date) AS INTEGER) as timestamp
             FROM price_changes
+            GROUP BY company, fuel_type, DATE(change_date)
             ORDER BY change_date DESC
-            LIMIT 10
+            LIMIT 100
         """)
         return self.cursor.fetchall()
 
