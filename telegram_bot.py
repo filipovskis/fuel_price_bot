@@ -312,7 +312,7 @@ async def process_price_changes(update: Update, context: ContextTypes.DEFAULT_TY
 
     change_avg = (max_price - min_price) / len(final_grouping)
 
-    message = msg.PRICE_CHANGES_HEADER if hasattr(msg, 'PRICE_CHANGES_HEADER') else "⛽ *Price Changes*\n\n"
+    message = f"⛽ *Price Changes* \\(__{escape(period.upper())}__\\)\n\n"
     
     message += "📊 *Summary:*\n"
     message += f"Average change: *{escape(f'{change_avg:+.2f}')}€*\n"
