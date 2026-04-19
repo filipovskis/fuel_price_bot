@@ -1,7 +1,7 @@
 from telegram_bot import init_bot
 from data_collector import run_collector
 
-DATA_FETCH_INTERVAL = 3600
+DATA_FETCH_INTERVAL = 900
 
 if __name__ == "__main__":
     application = init_bot()
