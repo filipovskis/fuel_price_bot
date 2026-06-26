@@ -6,7 +6,8 @@ from classes.fuel_station import FuelStation
 
 class Database:
     def __init__(self):
-        self.connection = sqlite3.connect("storage.db")
+        # to ensure volume from Docker working properly, we have to create the directory prior with .gitkeep file
+        self.connection = sqlite3.connect('data/storage.db')
         self.cursor = self.connection.cursor()
         self.create_tables()
 
